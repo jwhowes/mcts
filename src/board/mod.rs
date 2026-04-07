@@ -1,4 +1,3 @@
-pub mod mancala;
 pub mod connect_four;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
