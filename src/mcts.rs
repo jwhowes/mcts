@@ -7,119 +7,136 @@ use crate::board::{Board, Player};
 const C_UCT: f32 = SQRT_2;
 
 struct MCTSNode {
-	num_wins: Vec<usize>,
-	num_visits: Vec<usize>,
+    num_wins: Vec<usize>,
+    num_visits: Vec<usize>,
 
-	children: Vec<Option<MCTSNode>>
+    children: Vec<Option<MCTSNode>>,
 }
 
 impl MCTSNode {
-	fn value(&self) -> Vec<f32> {
-		let ln_parent_visits: f32 = (self.num_visits.iter().sum::<usize>() as f32).ln();
-		
-		(0..self.children.len())
-			.map(
-				|i| (self.num_wins[i] as f32 / self.num_visits[i] as f32) +
-				C_UCT * (ln_parent_visits / self.num_visits[i] as f32).sqrt()
-			).collect()
-	}
+    fn value(&self) -> Vec<f32> {
+        let ln_parent_visits: f32 = (self.num_visits.iter().sum::<usize>() as f32).ln();
 
-	fn from_board(board: &impl Board) -> Self {
-		let num_actions = board.legal_actions().len();
+        (0..self.children.len())
+            .map(|i| {
+                (self.num_wins[i] as f32 / self.num_visits[i] as f32)
+                    + C_UCT * (ln_parent_visits / self.num_visits[i] as f32).sqrt()
+            })
+            .collect()
+    }
 
-		Self {
-			num_wins: (0..num_actions).into_iter().map(|_| 0).collect(),
-			num_visits: (0..num_actions).into_iter().map(|_| 0).collect(),
+    fn from_board(board: &impl Board) -> Self {
+        let num_actions = board.legal_actions().len();
 
-			children: (0..num_actions).into_iter().map(|_| None).collect()
-		}
-	}
-	
-	fn run_simulation(&mut self, mut board: impl Board) -> Player {
-		if let Some(winner) = board.winner() {
-			return winner;
-		}
+        Self {
+            num_wins: (0..num_actions).into_iter().map(|_| 0).collect(),
+            num_visits: (0..num_actions).into_iter().map(|_| 0).collect(),
 
-		let actions = board.legal_actions();
+            children: (0..num_actions).into_iter().map(|_| None).collect(),
+        }
+    }
 
-		let unvisited_children = self.children.iter().enumerate()
-			.filter_map(|(c_idx, c)| if c.is_none() {
-				Some(c_idx)
-			} else {
-				None
-			}).collect::<Vec<_>>();
-		
-		let action_idx = if unvisited_children.is_empty() {
-			self.value().iter()
-				.enumerate()
-				.max_by(|(_, v1), (_, v2)| if v1 < v2 {
-					std::cmp::Ordering::Less
-				} else {
-					std::cmp::Ordering::Greater
-				}).unwrap().0
-		} else {
-			*unvisited_children.choose(&mut rng()).unwrap()
-		};
+    fn run_simulation(&mut self, mut board: impl Board) -> Player {
+        if let Some(winner) = board.winner() {
+            return winner;
+        }
 
-		let player = board.player();
+        let actions = board.legal_actions();
 
-		board.make_action(&actions[action_idx]);
+        let unvisited_children = self
+            .children
+            .iter()
+            .enumerate()
+            .filter_map(|(c_idx, c)| if c.is_none() { Some(c_idx) } else { None })
+            .collect::<Vec<_>>();
 
-		if self.children[action_idx].is_none() {
-			self.children[action_idx] = Some(Self::from_board(&board));
-		}
+        let action_idx = if unvisited_children.is_empty() {
+            self.value()
+                .iter()
+                .enumerate()
+                .max_by(|(_, v1), (_, v2)| {
+                    if v1 < v2 {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    }
+                })
+                .unwrap()
+                .0
+        } else {
+            *unvisited_children.choose(&mut rng()).unwrap()
+        };
 
-		let winner = self.children[action_idx].as_mut().unwrap().run_simulation(board);
+        let player = board.player();
 
-		self.num_visits[action_idx] += 1;
+        board.make_action(&actions[action_idx]);
 
-		if winner == player {
-			self.num_wins[action_idx] += 1;
-		}
+        if self.children[action_idx].is_none() {
+            self.children[action_idx] = Some(Self::from_board(&board));
+        }
 
-		winner
-	}
+        let winner = self.children[action_idx]
+            .as_mut()
+            .unwrap()
+            .run_simulation(board);
+
+        self.num_visits[action_idx] += 1;
+
+        if winner == player {
+            self.num_wins[action_idx] += 1;
+        }
+
+        winner
+    }
 }
 
 pub struct MCTS<B: Board> {
-	board: B,
-	
-	root: MCTSNode
+    board: B,
+
+    root: MCTSNode,
 }
 
 impl<B: Board> MCTS<B> {
-	pub fn new() -> Self {
-		let board = B::new();
+    pub fn new() -> Self {
+        let board = B::new();
 
-		Self {
-			root: MCTSNode::from_board(&board),
-			board
-		}
-	}
-	
-	pub fn run_simulation(&mut self, num_steps: usize) {
-		for _ in 0..num_steps {
-			self.root.run_simulation(self.board.clone());
-		}
-	}
+        Self {
+            root: MCTSNode::from_board(&board),
+            board,
+        }
+    }
 
-	pub fn make_action(&mut self, action_idx: usize) {
-		let action = &self.board.legal_actions()[action_idx];
+    pub fn run_simulation(&mut self, num_steps: usize) {
+        for _ in 0..num_steps {
+            self.root.run_simulation(self.board.clone());
+        }
+    }
 
-		self.board.make_action(action);
+    pub fn make_action(&mut self, action_idx: usize) {
+        let action = &self.board.legal_actions()[action_idx];
 
-		let new_root = self.root.children.remove(action_idx).unwrap_or_else(|| MCTSNode::from_board(&self.board));
+        self.board.make_action(action);
 
-		let _ = mem::replace(&mut self.root, new_root);
-	}
+        let new_root = self
+            .root
+            .children
+            .remove(action_idx)
+            .unwrap_or_else(|| MCTSNode::from_board(&self.board));
 
-	pub fn get_best_action(&self) -> usize {
-		self.root.num_visits.iter().enumerate()
-			.max_by_key(|(_, v)| **v)
-			.unwrap().0
-	}
+        let _ = mem::replace(&mut self.root, new_root);
+    }
 
-	pub fn board(&self) -> &B {
-		&self.board
-	}
+    pub fn get_best_action(&self) -> usize {
+        self.root
+            .num_visits
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, v)| **v)
+            .unwrap()
+            .0
+    }
+
+    pub fn board(&self) -> &B {
+        &self.board
+    }
 }
