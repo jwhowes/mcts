@@ -107,7 +107,7 @@ impl Board for ConnectFourBoard {
 			// Diagonal down check
 			for i in 0..6 {
 				let start_x = col + i - 3;
-				let start_y = (NUM_ROWS as i32) - 1 - (row + i - 3);
+				let start_y = row + i + 3;
 
 				if start_x >= 0 && start_x + 3 < NUM_COLS as i32 && start_y < NUM_ROWS as i32 && start_y - 3 >= 0 {
 					let mut found = true;
