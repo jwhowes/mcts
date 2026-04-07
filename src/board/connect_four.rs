@@ -40,7 +40,7 @@ impl Board for ConnectFourBoard {
 
         let winning = 'winner: {
             // Horizontal check
-            for i in 0..6 {
+            for i in 0..7 {
                 let start = col + i - 3;
 
                 if start >= 0 && start + 3 < NUM_COLS as i32 {
@@ -61,7 +61,7 @@ impl Board for ConnectFourBoard {
             }
 
             // Vertical check
-            for i in 0..6 {
+            for i in 0..7 {
                 let start = row + i - 3;
 
                 if start >= 0 && start + 3 < NUM_ROWS as i32 {
@@ -82,7 +82,7 @@ impl Board for ConnectFourBoard {
             }
 
             // Diagonal up check
-            for i in 0..6 {
+            for i in 0..7 {
                 let start_x = col + i - 3;
                 let start_y = row + i - 3;
 
@@ -109,14 +109,14 @@ impl Board for ConnectFourBoard {
             }
 
             // Diagonal down check
-            for i in 0..6 {
+            for i in 0..7 {
                 let start_x = col + i - 3;
-                let start_y = row + i + 3;
+                let start_y = row + 3 - i;
 
                 if start_x >= 0
                     && start_x + 3 < NUM_COLS as i32
-                    && start_y < NUM_ROWS as i32
                     && start_y - 3 >= 0
+                    && start_y < NUM_ROWS as i32
                 {
                     let mut found = true;
                     for j in 0..4 {
