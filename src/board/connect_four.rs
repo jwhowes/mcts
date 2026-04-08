@@ -175,14 +175,8 @@ impl Board for ConnectFourBoard {
             println!();
         }
 
-        let mut x = 0;
         for i in 0..NUM_COLS {
-            if self.top[i] < NUM_ROWS {
-                print!("{} ", x);
-                x += 1;
-            } else {
-                print!("  ");
-            }
+            print!("{} ", i);
         }
 
         println!();

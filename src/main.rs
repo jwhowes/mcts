@@ -35,11 +35,12 @@ fn main() -> anyhow::Result<()> {
 
         p2c_tx.send(player_action)?;
 
-        let cpu_action = c2p_rx.recv()?;
+        let cpu_action_idx = c2p_rx.recv()?;
+        let cpu_action = board.legal_actions()[cpu_action_idx];
 
         println!("Computer move: {}", cpu_action);
 
-        board.make_action(&board.legal_actions()[cpu_action]);
+        board.make_action(&cpu_action);
     }
 
     let winner = board.winner().unwrap();
