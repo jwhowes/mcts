@@ -1,6 +1,9 @@
-use std::{f32::consts::SQRT_2, mem};
-
 use rand::{rng, seq::IndexedRandom};
+use std::{
+    f32::consts::SQRT_2,
+    mem,
+    sync::mpsc::{self, SendError},
+};
 
 use crate::board::{Board, Player};
 
@@ -139,4 +142,34 @@ impl<B: Board> MCTS<B> {
     pub fn board(&self) -> &B {
         &self.board
     }
+}
+
+const STEPS_PER_POLL: usize = 1000;
+
+pub fn mcts_thread<B: Board>(
+    tx: mpsc::Sender<usize>,
+    rx: mpsc::Receiver<usize>,
+) -> Result<(), SendError<usize>> {
+    let mut tree = MCTS::<B>::new();
+
+    while tree.board().winner().is_none() {
+        match rx.try_recv() {
+            Err(_) => {
+                tree.run_simulation(STEPS_PER_POLL);
+            }
+
+            Ok(player_action) => {
+                tree.make_action(player_action);
+
+                tree.run_simulation(STEPS_PER_POLL);
+
+                let action = tree.get_best_action();
+                tree.make_action(action);
+
+                tx.send(action)?;
+            }
+        }
+    }
+
+    Ok(())
 }

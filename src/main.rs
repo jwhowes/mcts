@@ -1,56 +1,61 @@
-use std::io::{Write, stdin, stdout};
+use std::{
+    io::{Write, stdin, stdout},
+    sync::mpsc,
+    thread,
+};
 
 use crate::{
     board::{Board, Player, connect_four::ConnectFourBoard},
-    mcts::MCTS,
+    mcts::mcts_thread,
 };
 
 mod board;
 mod mcts;
 
-const SIMS_PER_MOVE: usize = 50_000;
+fn main() -> anyhow::Result<()> {
+    let mut board = ConnectFourBoard::new();
 
-fn main() {
-    let mut tree: MCTS<ConnectFourBoard> = MCTS::new();
+    let (p2c_tx, p2c_rx) = mpsc::channel::<usize>();
+    let (c2p_tx, c2p_rx) = mpsc::channel::<usize>();
 
-    while tree.board().winner().is_none() {
+    let cpu_thread = thread::spawn(move || mcts_thread::<ConnectFourBoard>(c2p_tx, p2c_rx));
+
+    while board.winner().is_none() {
+        board.display();
+
         let mut s = String::new();
 
-        let action_idx = match tree.board().player() {
-            Player::PlayerOne => {
-                tree.board().display();
+        print!("Enter your move: ");
+        stdout().flush().unwrap();
+        stdin().read_line(&mut s).unwrap();
 
-                print!("Enter your move: ");
-                stdout().flush().unwrap();
-                stdin().read_line(&mut s).unwrap();
+        let player_action: usize = s.trim().parse()?;
 
-                s.trim().parse().unwrap()
-            }
+        board.make_action(&player_action);
 
-            Player::PlayerTwo => {
-                tree.run_simulation(SIMS_PER_MOVE);
+        p2c_tx.send(player_action)?;
 
-                let best_action = tree.get_best_action();
+        let cpu_action = c2p_rx.recv()?;
 
-                println!("Computer move: {}", best_action);
+        println!("Computer move: {}", cpu_action);
 
-                best_action
-            }
-        };
-
-        tree.make_action(action_idx);
+        board.make_action(&cpu_action);
     }
 
-    let winner = tree.board().winner().unwrap();
+    let winner = board.winner().unwrap();
 
-    tree.board().display();
+    board.display();
 
     match winner {
         Player::PlayerOne => {
-            println!("Player wins!")
+            println!("Player wins!");
         }
         Player::PlayerTwo => {
-            println!("Computer wins!")
+            println!("Computer wins!");
         }
     }
+
+    let _ = cpu_thread.join();
+
+    Ok(())
 }
