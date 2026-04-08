@@ -145,6 +145,7 @@ impl<B: Board> MCTS<B> {
 }
 
 const STEPS_PER_POLL: usize = 1000;
+const STEPS_BEFORE_RESPONSE: usize = 10_000;
 
 pub fn mcts_thread<B: Board>(
     tx: mpsc::Sender<usize>,
@@ -161,7 +162,7 @@ pub fn mcts_thread<B: Board>(
             Ok(player_action) => {
                 tree.make_action(player_action);
 
-                tree.run_simulation(STEPS_PER_POLL);
+                tree.run_simulation(STEPS_BEFORE_RESPONSE);
 
                 let action = tree.get_best_action();
                 tree.make_action(action);

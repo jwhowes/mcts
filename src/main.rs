@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
 
         println!("Computer move: {}", cpu_action);
 
-        board.make_action(&cpu_action);
+        board.make_action(&board.legal_actions()[cpu_action]);
     }
 
     let winner = board.winner().unwrap();
