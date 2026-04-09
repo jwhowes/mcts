@@ -9,15 +9,14 @@ use crate::board::{Board, Player};
 
 const C_UCT: f32 = SQRT_2;
 
-struct MCTSNode<B: Board> {
-    actions: Vec<B::Action>,
+struct MCTSNode {
     num_wins: Vec<usize>,
     num_visits: Vec<usize>,
 
-    children: Vec<Option<MCTSNode<B>>>,
+    children: Vec<Option<MCTSNode>>,
 }
 
-impl<B: Board> MCTSNode<B> {
+impl MCTSNode {
     fn value(&self) -> Vec<f32> {
         let ln_parent_visits: f32 = (self.num_visits.iter().sum::<usize>() as f32).ln();
 
@@ -29,21 +28,20 @@ impl<B: Board> MCTSNode<B> {
             .collect()
     }
 
-    fn from_board(board: &B) -> Self {
-        let actions = board.legal_actions();
-        let num_actions = actions.len();
+    fn from_board(board: &impl Board) -> Self {
+        let num_actions = board.legal_actions().len();
 
         Self {
             num_wins: (0..num_actions).into_iter().map(|_| 0).collect(),
             num_visits: (0..num_actions).into_iter().map(|_| 0).collect(),
 
             children: (0..num_actions).into_iter().map(|_| None).collect(),
-
-            actions,
         }
     }
 
-    fn run_simulation(&mut self, mut board: B) -> Player {
+    fn run_simulation(&mut self, mut board: impl Board) -> Player {
+        let actions = board.legal_actions();
+
         if let Some(winner) = board.winner() {
             return winner;
         }
@@ -74,7 +72,7 @@ impl<B: Board> MCTSNode<B> {
 
         let player = board.player();
 
-        board.make_action(&self.actions[action_idx]);
+        board.make_action(&actions[action_idx]);
 
         if self.children[action_idx].is_none() {
             self.children[action_idx] = Some(Self::from_board(&board));
@@ -98,7 +96,7 @@ impl<B: Board> MCTSNode<B> {
 pub struct MCTS<B: Board> {
     board: B,
 
-    root: MCTSNode<B>,
+    root: MCTSNode,
 }
 
 impl<B: Board> MCTS<B> {
@@ -119,8 +117,8 @@ impl<B: Board> MCTS<B> {
 
     pub fn make_action(&mut self, action: &B::Action) {
         let action_idx = self
-            .root
-            .actions
+            .board
+            .legal_actions()
             .iter()
             .enumerate()
             .find(|(_, a)| *a == action)
@@ -130,8 +128,10 @@ impl<B: Board> MCTS<B> {
         self.make_action_idx(action_idx);
     }
 
-    fn make_action_idx(&mut self, action_idx: usize) {
-        self.board.make_action(&self.root.actions[action_idx]);
+    fn make_action_idx(&mut self, action_idx: usize) -> B::Action {
+        let action = self.board.legal_actions()[action_idx].clone();
+
+        self.board.make_action(&action);
 
         let new_root = self
             .root
@@ -140,6 +140,8 @@ impl<B: Board> MCTS<B> {
             .unwrap_or_else(|| MCTSNode::from_board(&self.board));
 
         let _ = mem::replace(&mut self.root, new_root);
+
+        action
     }
 
     pub fn make_best_action(&mut self) -> B::Action {
@@ -152,11 +154,7 @@ impl<B: Board> MCTS<B> {
             .unwrap()
             .0;
 
-        let action = self.root.actions[action_idx].clone();
-
-        self.make_action_idx(action_idx);
-
-        action
+        self.make_action_idx(action_idx)
     }
 
     pub fn board(&self) -> &B {
