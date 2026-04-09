@@ -30,14 +30,16 @@ impl<B: Board> MCTSNode<B> {
     }
 
     fn from_board(board: &B) -> Self {
-        let num_actions = board.legal_actions().len();
+        let actions = board.legal_actions();
+        let num_actions = actions.len();
 
         Self {
-            actions: board.legal_actions(),
             num_wins: (0..num_actions).into_iter().map(|_| 0).collect(),
             num_visits: (0..num_actions).into_iter().map(|_| 0).collect(),
 
             children: (0..num_actions).into_iter().map(|_| None).collect(),
+
+            actions,
         }
     }
 
@@ -45,8 +47,6 @@ impl<B: Board> MCTSNode<B> {
         if let Some(winner) = board.winner() {
             return winner;
         }
-
-        let actions = board.legal_actions();
 
         let unvisited_children = self
             .children
@@ -74,7 +74,7 @@ impl<B: Board> MCTSNode<B> {
 
         let player = board.player();
 
-        board.make_action(&actions[action_idx]);
+        board.make_action(&self.actions[action_idx]);
 
         if self.children[action_idx].is_none() {
             self.children[action_idx] = Some(Self::from_board(&board));
@@ -127,7 +127,11 @@ impl<B: Board> MCTS<B> {
             .unwrap()
             .0;
 
-        self.board.make_action(action);
+        self.make_action_idx(action_idx);
+    }
+
+    fn make_action_idx(&mut self, action_idx: usize) {
+        self.board.make_action(&self.root.actions[action_idx]);
 
         let new_root = self
             .root
@@ -138,15 +142,21 @@ impl<B: Board> MCTS<B> {
         let _ = mem::replace(&mut self.root, new_root);
     }
 
-    pub fn get_best_action(&self) -> &B::Action {
-        &self.root.actions[self
+    pub fn make_best_action(&mut self) -> B::Action {
+        let action_idx = self
             .root
             .num_visits
             .iter()
             .enumerate()
             .max_by_key(|(_, v)| **v)
             .unwrap()
-            .0]
+            .0;
+
+        let action = self.root.actions[action_idx].clone();
+
+        self.make_action_idx(action_idx);
+
+        action
     }
 
     pub fn board(&self) -> &B {
@@ -174,10 +184,7 @@ pub fn mcts_thread<B: Board>(
 
                 tree.run_simulation(STEPS_BEFORE_RESPONSE);
 
-                let action = tree.get_best_action().clone();
-                tree.make_action(&action);
-
-                tx.send(action.clone())?;
+                tx.send(tree.make_best_action())?;
             }
         }
     }
