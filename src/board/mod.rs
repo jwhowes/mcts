@@ -7,7 +7,7 @@ pub enum Player {
 }
 
 pub trait Board: Clone {
-    type Action;
+    type Action: Eq + Clone;
 
     fn new() -> Self;
     fn legal_actions(&self) -> Vec<Self::Action>;

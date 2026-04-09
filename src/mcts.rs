@@ -9,14 +9,15 @@ use crate::board::{Board, Player};
 
 const C_UCT: f32 = SQRT_2;
 
-struct MCTSNode {
+struct MCTSNode<B: Board> {
+    actions: Vec<B::Action>,
     num_wins: Vec<usize>,
     num_visits: Vec<usize>,
 
-    children: Vec<Option<MCTSNode>>,
+    children: Vec<Option<MCTSNode<B>>>,
 }
 
-impl MCTSNode {
+impl<B: Board> MCTSNode<B> {
     fn value(&self) -> Vec<f32> {
         let ln_parent_visits: f32 = (self.num_visits.iter().sum::<usize>() as f32).ln();
 
@@ -28,10 +29,11 @@ impl MCTSNode {
             .collect()
     }
 
-    fn from_board(board: &impl Board) -> Self {
+    fn from_board(board: &B) -> Self {
         let num_actions = board.legal_actions().len();
 
         Self {
+            actions: board.legal_actions(),
             num_wins: (0..num_actions).into_iter().map(|_| 0).collect(),
             num_visits: (0..num_actions).into_iter().map(|_| 0).collect(),
 
@@ -39,7 +41,7 @@ impl MCTSNode {
         }
     }
 
-    fn run_simulation(&mut self, mut board: impl Board) -> Player {
+    fn run_simulation(&mut self, mut board: B) -> Player {
         if let Some(winner) = board.winner() {
             return winner;
         }
@@ -96,7 +98,7 @@ impl MCTSNode {
 pub struct MCTS<B: Board> {
     board: B,
 
-    root: MCTSNode,
+    root: MCTSNode<B>,
 }
 
 impl<B: Board> MCTS<B> {
@@ -115,8 +117,15 @@ impl<B: Board> MCTS<B> {
         }
     }
 
-    pub fn make_action(&mut self, action_idx: usize) {
-        let action = &self.board.legal_actions()[action_idx];
+    pub fn make_action(&mut self, action: &B::Action) {
+        let action_idx = self
+            .root
+            .actions
+            .iter()
+            .enumerate()
+            .find(|(_, a)| *a == action)
+            .unwrap()
+            .0;
 
         self.board.make_action(action);
 
@@ -129,14 +138,15 @@ impl<B: Board> MCTS<B> {
         let _ = mem::replace(&mut self.root, new_root);
     }
 
-    pub fn get_best_action(&self) -> usize {
-        self.root
+    pub fn get_best_action(&self) -> &B::Action {
+        &self.root.actions[self
+            .root
             .num_visits
             .iter()
             .enumerate()
             .max_by_key(|(_, v)| **v)
             .unwrap()
-            .0
+            .0]
     }
 
     pub fn board(&self) -> &B {
@@ -148,9 +158,9 @@ const STEPS_PER_POLL: usize = 1000;
 const STEPS_BEFORE_RESPONSE: usize = 10_000;
 
 pub fn mcts_thread<B: Board>(
-    tx: mpsc::Sender<usize>,
-    rx: mpsc::Receiver<usize>,
-) -> Result<(), SendError<usize>> {
+    tx: mpsc::Sender<B::Action>,
+    rx: mpsc::Receiver<B::Action>,
+) -> Result<(), SendError<B::Action>> {
     let mut tree = MCTS::<B>::new();
 
     while tree.board().winner().is_none() {
@@ -160,14 +170,14 @@ pub fn mcts_thread<B: Board>(
             }
 
             Ok(player_action) => {
-                tree.make_action(player_action);
+                tree.make_action(&player_action);
 
                 tree.run_simulation(STEPS_BEFORE_RESPONSE);
 
-                let action = tree.get_best_action();
-                tree.make_action(action);
+                let action = tree.get_best_action().clone();
+                tree.make_action(&action);
 
-                tx.send(action)?;
+                tx.send(action.clone())?;
             }
         }
     }

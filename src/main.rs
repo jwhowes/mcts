@@ -1,5 +1,7 @@
 use std::{
+    fmt::Display,
     io::{Write, stdin, stdout},
+    str::FromStr,
     sync::mpsc,
     thread,
 };
@@ -12,13 +14,17 @@ use crate::{
 mod board;
 mod mcts;
 
-fn main() -> anyhow::Result<()> {
-    let mut board = ConnectFourBoard::new();
+fn play_vs_cpu<B: Board>() -> anyhow::Result<()>
+where
+    B::Action: 'static + Display + Send + Sync + FromStr,
+    <B::Action as FromStr>::Err: Send + Sync + std::error::Error,
+{
+    let mut board = B::new();
 
-    let (p2c_tx, p2c_rx) = mpsc::channel::<usize>();
-    let (c2p_tx, c2p_rx) = mpsc::channel::<usize>();
+    let (p2c_tx, p2c_rx) = mpsc::channel::<B::Action>();
+    let (c2p_tx, c2p_rx) = mpsc::channel::<B::Action>();
 
-    let cpu_thread = thread::spawn(move || mcts_thread::<ConnectFourBoard>(c2p_tx, p2c_rx));
+    let cpu_thread = thread::spawn(move || mcts_thread::<B>(c2p_tx, p2c_rx));
 
     while board.winner().is_none() {
         board.display();
@@ -29,14 +35,13 @@ fn main() -> anyhow::Result<()> {
         stdout().flush().unwrap();
         stdin().read_line(&mut s).unwrap();
 
-        let player_action: usize = s.trim().parse()?;
+        let player_action: B::Action = s.trim().parse()?;
 
         board.make_action(&player_action);
 
         p2c_tx.send(player_action)?;
 
-        let cpu_action_idx = c2p_rx.recv()?;
-        let cpu_action = board.legal_actions()[cpu_action_idx];
+        let cpu_action = c2p_rx.recv()?;
 
         println!("Computer move: {}", cpu_action);
 
@@ -59,4 +64,8 @@ fn main() -> anyhow::Result<()> {
     let _ = cpu_thread.join();
 
     Ok(())
+}
+
+fn main() -> anyhow::Result<()> {
+    play_vs_cpu::<ConnectFourBoard>()
 }
